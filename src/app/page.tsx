@@ -10,10 +10,10 @@ export default function Home() {
         <h1 className="text-2xl font-bold text-gray-900">StageItForMe</h1>
         <div className="flex gap-4">
           <Button variant="outline" asChild>
-            <Link href="/auth/signin">Sign In</Link>
+            <Link href="/sign-in">Sign In</Link>
           </Button>
           <Button asChild>
-            <Link href="/auth/signin">Get Started</Link>
+            <Link href="/sign-up">Get Started</Link>
           </Button>
         </div>
       </header>
@@ -30,7 +30,7 @@ export default function Home() {
         </p>
         <div className="flex gap-4 justify-center">
           <Button size="lg" asChild>
-            <Link href="/auth/signin">Start Staging Now</Link>
+            <Link href="/sign-up">Start Staging Now</Link>
           </Button>
           <Button size="lg" variant="outline">
             View Examples

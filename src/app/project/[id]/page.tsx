@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { useSession } from "next-auth/react";
+import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import { useState, useEffect, useRef, use } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
@@ -26,7 +26,7 @@ interface UserImage {
 }
 
 export default function ProjectPage({ params }: ProjectPageProps) {
-  const { data: session, status } = useSession();
+  const { user, loading: isLoading } = useAuth();
   const resolvedParams = use(params);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -34,7 +34,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
   // Use Convex to get photos and manage data
   const photos = useQuery(
     api.photos.getByUserId,
-    session?.user?.id ? { userId: session.user.id } : "skip"
+    user ? { userId: user.id } : "skip"
   );
 
   const createUser = useMutation(api.users.create);
@@ -42,15 +42,15 @@ export default function ProjectPage({ params }: ProjectPageProps) {
   const createPhoto = useMutation(api.photos.create);
   const getProjects = useQuery(
     api.projects.getByUserId,
-    session?.user?.id ? { userId: session.user.id } : "skip"
+    user ? { userId: user.id } : "skip"
   );
 
   const handleUpload = async (files: FileList | null) => {
-    if (!files || files.length === 0 || !session?.user?.id) return;
+    if (!files || files.length === 0 || !user) return;
 
     setUploading(true);
     const formData = new FormData();
-    
+
     Array.from(files).forEach(file => {
       formData.append('images', file);
     });
@@ -58,10 +58,10 @@ export default function ProjectPage({ params }: ProjectPageProps) {
     try {
       // Ensure user exists
       await createUser({
-        userId: session.user.id,
-        email: session.user.email!,
-        name: session.user.name || undefined,
-        image: session.user.image || undefined,
+        userId: user.id,
+        email: user.email!,
+        name: user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : undefined,
+        image: user.profilePictureUrl || undefined,
       });
 
       // Get or create default project
@@ -70,7 +70,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
         projectId = await createProject({
           name: "My Photos",
           description: "Default project for uploaded photos",
-          userId: session.user.id,
+          userId: user.id,
         });
       } else {
         projectId = getProjects[0]._id;
@@ -83,13 +83,13 @@ export default function ProjectPage({ params }: ProjectPageProps) {
       });
 
       const data = await response.json();
-      
+
       if (data.success) {
         // Store each uploaded image metadata in Convex
         for (const upload of data.uploads) {
           await createPhoto({
             projectId,
-            userId: session.user.id,
+            userId: user.id,
             filename: upload.filename,
             originalUrl: upload.imageUrl,
             s3Key: upload.s3Key,
@@ -104,19 +104,19 @@ export default function ProjectPage({ params }: ProjectPageProps) {
     }
   };
 
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes || bytes === 0) return '0 Bytes';
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString();
+  const formatDate = (timestamp: number) => {
+    return new Date(timestamp).toLocaleDateString();
   };
 
-  if (status === "loading" || photos === undefined) {
+  if (isLoading || photos === undefined) {
     return (
       <div className="container mx-auto py-8">
         <div className="flex items-center justify-center h-64">
@@ -126,7 +126,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
     );
   }
 
-  if (!session) {
+  if (!user) {
     return (
       <div className="container mx-auto py-8">
         <div className="text-center">
@@ -146,7 +146,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
         <div>
           <h1 className="text-3xl font-bold">Your Photos</h1>
           <p className="text-gray-600 mt-2">
-            {photos && photos.length > 0 
+            {photos && photos.length > 0
               ? `${photos.length} photos • Click any photo to start staging`
               : "Upload photos to get started with virtual staging"
             }
@@ -161,7 +161,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
             className="hidden"
             onChange={(e) => handleUpload(e.target.files)}
           />
-          <Button 
+          <Button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
           >
@@ -182,7 +182,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
             <p className="text-gray-600 mb-4">
               Upload your first room photos to start creating stunning virtual staged images
             </p>
-            <Button 
+            <Button
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
             >

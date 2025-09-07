@@ -1,0 +1,1 @@
+Always run npm run lint && npm run compile after making changes.

@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { withAuth } from '@workos-inc/authkit-nextjs';
 import { getSignedDownloadUrl } from '@/lib/s3';
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    const userInfo = await withAuth();
+    if (!userInfo?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -18,18 +17,18 @@ export async function GET(request: NextRequest) {
     }
 
     // Verify the user owns this image (basic security check)
-    if (!s3Key.includes(`/${session.user.id}/`)) {
+    if (!s3Key.includes(`/${userInfo.user.id}/`)) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
     const signedUrl = await getSignedDownloadUrl(s3Key, 3600); // 1 hour expiry
-    
+
     return NextResponse.json({ signedUrl });
 
   } catch (error) {
     console.error('Signed URL error:', error);
-    return NextResponse.json({ 
-      error: 'Failed to generate signed URL' 
+    return NextResponse.json({
+      error: 'Failed to generate signed URL'
     }, { status: 500 });
   }
 }

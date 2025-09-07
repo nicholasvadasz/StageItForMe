@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { withAuth } from '@workos-inc/authkit-nextjs';
 import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { getSignedDownloadUrl } from '@/lib/s3';
 
@@ -14,12 +13,12 @@ const s3Client = new S3Client({
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    const userInfo = await withAuth();
+    if (!userInfo?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const userId = session.user.id;
+    const userId = userInfo.user.id;
     const bucketName = process.env.AWS_S3_BUCKET_NAME!;
 
     // List objects in user's directory
@@ -30,7 +29,7 @@ export async function GET(request: NextRequest) {
     });
 
     const listResult = await s3Client.send(listCommand);
-    
+
     if (!listResult.Contents) {
       return NextResponse.json({ images: [] });
     }
@@ -41,7 +40,7 @@ export async function GET(request: NextRequest) {
         .filter(obj => obj.Key && obj.Key.match(/\.(jpg|jpeg|png|gif|webp)$/i))
         .map(async (obj) => {
           const signedUrl = await getSignedDownloadUrl(obj.Key!);
-          
+
           return {
             key: obj.Key,
             filename: obj.Key!.split('/').pop(),
@@ -53,16 +52,16 @@ export async function GET(request: NextRequest) {
         })
     );
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       images,
       count: images.length,
-      userId 
+      userId
     });
 
   } catch (error) {
     console.error('Error fetching user images:', error);
-    return NextResponse.json({ 
-      error: 'Failed to fetch images' 
+    return NextResponse.json({
+      error: 'Failed to fetch images'
     }, { status: 500 });
   }
 }

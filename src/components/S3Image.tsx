@@ -13,6 +13,12 @@ interface S3ImageProps {
   height?: number;
 }
 
+// Simple in-memory cache for signed URLs
+const urlCache = new Map<string, { url: string; expiry: number }>();
+
+// Cache URLs for 45 minutes (signed URLs are valid for 1 hour)
+const CACHE_DURATION = 45 * 60 * 1000; // 45 minutes in milliseconds
+
 export default function S3Image({ s3Key, alt, fill, className, sizes, width, height }: S3ImageProps) {
   const [signedUrl, setSignedUrl] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -21,11 +27,28 @@ export default function S3Image({ s3Key, alt, fill, className, sizes, width, hei
   useEffect(() => {
     const fetchSignedUrl = async () => {
       try {
+        // Check cache first
+        const cached = urlCache.get(s3Key);
+        const now = Date.now();
+
+        if (cached && cached.expiry > now) {
+          setSignedUrl(cached.url);
+          setLoading(false);
+          return;
+        }
+
+        // Fetch new signed URL
         const response = await fetch(`/api/signed-url?key=${encodeURIComponent(s3Key)}`);
         const data = await response.json();
-        
+
         if (data.signedUrl) {
           setSignedUrl(data.signedUrl);
+
+          // Cache the URL
+          urlCache.set(s3Key, {
+            url: data.signedUrl,
+            expiry: now + CACHE_DURATION
+          });
         } else {
           setError(true);
         }

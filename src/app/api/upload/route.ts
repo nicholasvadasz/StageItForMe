@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { withAuth } from '@workos-inc/authkit-nextjs';
 import { uploadToS3, generateS3Key } from '@/lib/s3';
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    const userInfo = await withAuth();
+    if (!userInfo?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -14,8 +13,8 @@ export async function POST(request: NextRequest) {
     const files = formData.getAll('images') as File[];
 
     if (!files || files.length === 0) {
-      return NextResponse.json({ 
-        error: 'No images provided' 
+      return NextResponse.json({
+        error: 'No images provided'
       }, { status: 400 });
     }
 
@@ -25,8 +24,8 @@ export async function POST(request: NextRequest) {
       const imageBuffer = Buffer.from(arrayBuffer);
 
       // Generate S3 key for this user
-      const s3Key = generateS3Key(session.user.id, file.name, 'original');
-      
+      const s3Key = generateS3Key(userInfo.user.id, file.name, 'original');
+
       // Upload to S3
       const imageUrl = await uploadToS3(imageBuffer, s3Key, file.type);
 
@@ -50,8 +49,8 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Upload error:', error);
-    return NextResponse.json({ 
-      error: error instanceof Error ? error.message : 'Upload failed' 
+    return NextResponse.json({
+      error: error instanceof Error ? error.message : 'Upload failed'
     }, { status: 500 });
   }
 }

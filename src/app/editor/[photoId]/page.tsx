@@ -2,8 +2,9 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useSession } from "next-auth/react";
+import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import { useState, useEffect, use } from "react";
+import { toast } from "sonner";
 import Link from "next/link";
 import Image from "next/image";
 import S3Image from "@/components/S3Image";
@@ -25,10 +26,9 @@ interface ImageData {
 
 type RoomType = 'living-room' | 'bedroom' | 'kitchen' | 'dining-room' | 'bathroom' | 'office';
 type FurnitureStyle = 'modern' | 'traditional' | 'minimalist' | 'rustic' | 'industrial' | 'scandinavian';
-type Lighting = 'bright' | 'warm' | 'natural' | 'dramatic';
 
 export default function EditorPage({ params }: EditorPageProps) {
-  const { data: session, status } = useSession();
+  const { user, loading: isLoading } = useAuth();
   const resolvedParams = use(params);
   const [image, setImage] = useState<ImageData | null>(null);
   const [stagedImage, setStagedImage] = useState<string | null>(null);
@@ -38,19 +38,18 @@ export default function EditorPage({ params }: EditorPageProps) {
   // Staging options
   const [selectedRoomType, setSelectedRoomType] = useState<RoomType>('living-room');
   const [selectedStyle, setSelectedStyle] = useState<FurnitureStyle>('modern');
-  const [selectedLighting, setSelectedLighting] = useState<Lighting>('bright');
 
   useEffect(() => {
-    if (session) {
+    if (user) {
       fetchImage();
     }
-  }, [session, resolvedParams.photoId]);
+  }, [user, resolvedParams.photoId]);
 
   const fetchImage = async () => {
     try {
       const response = await fetch(`/api/image/${resolvedParams.photoId}`);
       const data = await response.json();
-      
+
       if (data.image) {
         setImage(data.image);
       }
@@ -65,7 +64,12 @@ export default function EditorPage({ params }: EditorPageProps) {
     if (!image) return;
 
     setStaging(true);
-    
+
+    // Show loading toast
+    const loadingToastId = toast.loading("Generating staged image...", {
+      description: "This may take 10-30 seconds depending on image complexity"
+    });
+
     try {
       // Fetch the image as a blob
       const imageResponse = await fetch(image.url);
@@ -76,8 +80,7 @@ export default function EditorPage({ params }: EditorPageProps) {
       formData.append('image', imageBlob, image.filename);
       formData.append('options', JSON.stringify({
         roomType: selectedRoomType,
-        furnitureStyle: selectedStyle,
-        lighting: selectedLighting
+        furnitureStyle: selectedStyle
       }));
 
       // Call staging API
@@ -90,13 +93,25 @@ export default function EditorPage({ params }: EditorPageProps) {
 
       if (result.success && result.stagedImageUrl) {
         setStagedImage(result.stagedImageUrl);
+
+        // Show success toast
+        toast.success("Staging Complete!", {
+          description: `Your ${selectedRoomType.replace('-', ' ')} has been virtually staged with ${selectedStyle} furniture`,
+          id: loadingToastId
+        });
       } else {
         console.error('Staging failed:', result.error);
-        alert('Staging failed: ' + (result.error || 'Unknown error'));
+        toast.error("Staging Failed", {
+          description: result.error || 'Unknown error occurred',
+          id: loadingToastId
+        });
       }
     } catch (error) {
       console.error('Staging error:', error);
-      alert('Staging failed. Please try again.');
+      toast.error("Staging Failed", {
+        description: "Please try again",
+        id: loadingToastId
+      });
     } finally {
       setStaging(false);
     }
@@ -113,7 +128,7 @@ export default function EditorPage({ params }: EditorPageProps) {
       const response = await fetch(stagedImage);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
-      
+
       const a = document.createElement('a');
       a.href = url;
       a.download = `staged_${image?.filename || 'image.png'}`;
@@ -126,7 +141,7 @@ export default function EditorPage({ params }: EditorPageProps) {
     }
   };
 
-  if (status === "loading" || loading) {
+  if (isLoading || loading) {
     return (
       <div className="h-screen flex items-center justify-center">
         <p>Loading...</p>
@@ -134,7 +149,7 @@ export default function EditorPage({ params }: EditorPageProps) {
     );
   }
 
-  if (!session) {
+  if (!user) {
     return (
       <div className="h-screen flex items-center justify-center">
         <div className="text-center">
@@ -188,26 +203,18 @@ export default function EditorPage({ params }: EditorPageProps) {
             </Button>
           </div>
         </div>
-        
+
         <div className="flex-1 p-6 flex items-center justify-center bg-gray-50">
           <div className="max-w-4xl max-h-full w-full">
             {stagedImage ? (
-              <div className="relative w-full">
-                <div className="aspect-video bg-white border-2 border-gray-300 rounded-lg overflow-hidden relative">
-                  <Image
-                    src={stagedImage}
-                    alt="Staged room"
-                    fill
-                    className="object-contain"
-                    sizes="(max-width: 768px) 100vw, 80vw"
-                  />
-                </div>
-                <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-                  <p className="text-green-800 font-medium">✅ Staging Complete!</p>
-                  <p className="text-green-600 text-sm">
-                    Your {selectedRoomType.replace('-', ' ')} has been virtually staged with {selectedStyle} furniture
-                  </p>
-                </div>
+              <div className="aspect-video bg-white border-2 border-gray-300 rounded-lg overflow-hidden relative">
+                <Image
+                  src={stagedImage}
+                  alt="Staged room"
+                  fill
+                  className="object-contain"
+                  sizes="(max-width: 768px) 100vw, 80vw"
+                />
               </div>
             ) : (
               <div className="aspect-video bg-white border-2 border-gray-300 rounded-lg overflow-hidden relative">
@@ -227,7 +234,7 @@ export default function EditorPage({ params }: EditorPageProps) {
       {/* Staging Options Sidebar */}
       <div className="w-80 border-l bg-white p-6 overflow-y-auto">
         <h2 className="text-lg font-semibold mb-4">Staging Options</h2>
-        
+
         <Card className="mb-4">
           <CardHeader>
             <CardTitle className="text-base">Room Type</CardTitle>
@@ -242,7 +249,7 @@ export default function EditorPage({ params }: EditorPageProps) {
                   onClick={() => setSelectedRoomType(type)}
                   className="justify-start"
                 >
-                  {type.replace('-', ' ').split(' ').map(word => 
+                  {type.replace('-', ' ').split(' ').map(word =>
                     word.charAt(0).toUpperCase() + word.slice(1)
                   ).join(' ')}
                 </Button>
@@ -270,52 +277,6 @@ export default function EditorPage({ params }: EditorPageProps) {
             </div>
           </CardContent>
         </Card>
-
-        <Card className="mb-4">
-          <CardHeader>
-            <CardTitle className="text-base">Lighting</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-2">
-              {(['bright', 'warm', 'natural', 'dramatic'] as Lighting[]).map((lighting) => (
-                <Button
-                  key={lighting}
-                  variant={selectedLighting === lighting ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setSelectedLighting(lighting)}
-                >
-                  {lighting.charAt(0).toUpperCase() + lighting.slice(1)}
-                </Button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Current Selection Summary */}
-        <Card className="bg-blue-50">
-          <CardHeader>
-            <CardTitle className="text-base">Current Selection</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2 text-sm">
-              <p><strong>Room:</strong> {selectedRoomType.replace('-', ' ')}</p>
-              <p><strong>Style:</strong> {selectedStyle}</p>
-              <p><strong>Lighting:</strong> {selectedLighting}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        {staging && (
-          <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="flex items-center space-x-2">
-              <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 border-t-transparent"></div>
-              <span className="text-blue-800">Generating staged image...</span>
-            </div>
-            <p className="text-blue-600 text-sm mt-2">
-              This may take 10-30 seconds depending on image complexity
-            </p>
-          </div>
-        )}
       </div>
     </div>
   );

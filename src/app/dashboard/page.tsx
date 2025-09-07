@@ -2,27 +2,27 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useSession } from "next-auth/react";
+import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import Link from "next/link";
 import S3Image from "@/components/S3Image";
 
 export default function Dashboard() {
-  const { data: session, status } = useSession();
+  const { user, loading: isLoading, signOut } = useAuth();
   
   // Use Convex to get user's photos in real-time
   const photos = useQuery(
     api.photos.getByUserId,
-    session?.user?.id ? { userId: session.user.id } : "skip"
+    user ? { userId: user.id } : "skip"
   );
 
   const projects = useQuery(
     api.projects.getByUserId,
-    session?.user?.id ? { userId: session.user.id } : "skip"
+    user ? { userId: user.id } : "skip"
   );
 
-  if (status === "loading" || photos === undefined) {
+  if (isLoading || photos === undefined) {
     return (
       <div className="container mx-auto py-8">
         <div className="flex items-center justify-center h-64">
@@ -32,14 +32,14 @@ export default function Dashboard() {
     );
   }
 
-  if (!session) {
+  if (!user) {
     return (
       <div className="container mx-auto py-8">
         <div className="text-center">
           <h1 className="text-2xl font-bold mb-4">Sign In Required</h1>
           <p className="mb-4">Please sign in to access your dashboard</p>
           <Button asChild>
-            <Link href="/auth/signin">Sign In</Link>
+            <Link href="/sign-in">Sign In</Link>
           </Button>
         </div>
       </div>
@@ -48,9 +48,22 @@ export default function Dashboard() {
 
   return (
     <div className="container mx-auto py-8">
+      {/* Header with Sign Out */}
+      <div className="flex justify-between items-center mb-4">
+        <Link href="/dashboard" className="text-2xl font-bold text-gray-900">StageItForMe</Link>
+        <div className="flex items-center gap-4">
+          <span className="text-sm text-gray-600">
+            {user.firstName || user.email?.split('@')[0] || 'User'}
+          </span>
+          <Button variant="outline" onClick={() => signOut()}>
+            Sign Out
+          </Button>
+        </div>
+      </div>
+
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-3xl font-bold">Welcome back, {session.user?.name?.split(' ')[0] || 'User'}!</h1>
+          <h1 className="text-3xl font-bold">Welcome back, {user.firstName || user.email?.split('@')[0] || 'User'}!</h1>
           <p className="text-gray-600 mt-2">
             {photos && photos.length > 0 
               ? `You have ${photos.length} photos ready for virtual staging`

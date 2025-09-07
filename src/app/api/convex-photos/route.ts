@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { withAuth } from '@workos-inc/authkit-nextjs';
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../../../convex/_generated/api";
 
@@ -8,8 +7,8 @@ const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    const userInfo = await withAuth();
+    if (!userInfo?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -17,17 +16,17 @@ export async function POST(request: NextRequest) {
 
     switch (action) {
       case 'createUser':
-        const user = await convex.mutation(api.users.create, {
-          userId: session.user.id,
-          email: session.user.email!,
-          name: session.user.name || undefined,
-          image: session.user.image || undefined,
+        const userRecord = await convex.mutation(api.users.create, {
+          userId: userInfo.user.id,
+          email: userInfo.user.email,
+          name: userInfo.user.firstName || userInfo.user.lastName ? `${userInfo.user.firstName || ''} ${userInfo.user.lastName || ''}`.trim() || undefined : undefined,
+          image: userInfo.user.profilePictureUrl || undefined,
         });
-        return NextResponse.json({ success: true, user });
+        return NextResponse.json({ success: true, user: userRecord });
 
       case 'getProjects':
         const projects = await convex.query(api.projects.getByUserId, {
-          userId: session.user.id
+          userId: userInfo.user.id
         });
         return NextResponse.json({ success: true, projects });
 
@@ -35,7 +34,7 @@ export async function POST(request: NextRequest) {
         const project = await convex.mutation(api.projects.create, {
           name: data.name || "My Photos",
           description: data.description || "Default project for uploaded photos",
-          userId: session.user.id,
+          userId: userInfo.user.id,
         });
         return NextResponse.json({ success: true, project });
 
@@ -45,7 +44,7 @@ export async function POST(request: NextRequest) {
 
       case 'getPhotos':
         const photos = await convex.query(api.photos.getByUserId, {
-          userId: session.user.id
+          userId: userInfo.user.id
         });
         return NextResponse.json({ success: true, photos });
 
@@ -55,8 +54,8 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Convex API error:', error);
-    return NextResponse.json({ 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+    return NextResponse.json({
+      error: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }
 }

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { withAuth } from '@workos-inc/authkit-nextjs';
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../../../../convex/_generated/api";
 import { Id } from "../../../../../convex/_generated/dataModel";
@@ -13,8 +12,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    const userInfo = await withAuth();
+    if (!userInfo?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -29,7 +28,7 @@ export async function GET(
     }
 
     // Verify user owns this photo
-    if (photo.userId !== session.user.id) {
+    if (photo.userId !== userInfo.user.id) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
@@ -50,8 +49,8 @@ export async function GET(
 
   } catch (error) {
     console.error('Get photo error:', error);
-    return NextResponse.json({ 
-      error: 'Failed to fetch photo' 
+    return NextResponse.json({
+      error: 'Failed to fetch photo'
     }, { status: 500 });
   }
 }
