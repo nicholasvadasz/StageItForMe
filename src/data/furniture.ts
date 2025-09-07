@@ -8,16 +8,16 @@ export const furnitureDatabase: FurnitureItem[] = [
         name: 'Eames Lounge Chair',
         category: 'Seating',
         roomType: 'bedroom',
-        imagePath: '/furniture/bedroom/eames.jpg',
+        imagePath: '/furniture/bedroom/eames.png',
         style: 'modern',
-        baseSize: 40, // 6% of smaller dimension - compact chair
+        baseSize: 50, // 6% of smaller dimension - compact chair
     },
     {
         id: 'lamp',
-        name: 'Floor Lamp',
+        name: 'Tiffany Floor Lamp',
         category: 'Lighting',
         roomType: 'bedroom',
-        imagePath: '/furniture/bedroom/lamp.jpg',
+        imagePath: '/furniture/bedroom/lamp.png',
         style: 'modern',
         baseSize: 30, // 3% of smaller dimension - tall but narrow
     },
@@ -26,7 +26,7 @@ export const furnitureDatabase: FurnitureItem[] = [
         name: 'Glass Coffee Table',
         category: 'Tables',
         roomType: 'bedroom',
-        imagePath: '/furniture/bedroom/glasstable.webp',
+        imagePath: '/furniture/bedroom/glasstable.png',
         style: 'modern',
         baseSize: 20, // 10% of smaller dimension - larger table
     }

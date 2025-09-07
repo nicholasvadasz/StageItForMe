@@ -14,7 +14,7 @@ import { DraggableFurniture } from "@/components/DraggableFurniture";
 import { DroppedFurniture, FurnitureItem } from "@/types/furniture";
 import { getFurnitureById } from "@/data/furniture";
 import { DragPreviewFurniture } from "@/components/DragPreviewFurniture";
-import { createCollageBlob } from "@/lib/collage";
+import { createFurnitureContactSheetBlob, createCollageBlob } from "@/lib/collage";
 
 interface EditorPageProps {
   params: Promise<{
@@ -40,6 +40,8 @@ export default function EditorPage({ params }: EditorPageProps) {
   const [image, setImage] = useState<ImageData | null>(null);
   const [stagedImage, setStagedImage] = useState<string | null>(null);
   const [collagePreview, setCollagePreview] = useState<string | null>(null);
+  const [contactSheetPreview, setContactSheetPreview] = useState<string | null>(null);
+  const [annotatedRoomPreview, setAnnotatedRoomPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [staging, setStaging] = useState(false);
   const [droppedFurniture, setDroppedFurniture] = useState<DroppedFurniture[]>([]);
@@ -147,8 +149,8 @@ export default function EditorPage({ params }: EditorPageProps) {
 
     setStaging(true);
 
-    const loadingToastId = toast.loading("Creating collage staging...", {
-      description: "Analyzing furniture placement and generating staged image"
+    const loadingToastId = toast.loading("Analyzing furniture placement...", {
+      description: "Step 1: Identifying locations, Step 2: Staging with AI"
     });
 
     try {
@@ -158,7 +160,13 @@ export default function EditorPage({ params }: EditorPageProps) {
         throw new Error('Canvas not found');
       }
 
-      // Create collage image using original image dimensions
+      // Create furniture contact sheet (catalog with names)
+      const contactSheetBlob = await createFurnitureContactSheetBlob(
+        image.url,
+        droppedFurniture
+      );
+
+      // Create collage image (with furniture placed on original image)
       const collageBlob = await createCollageBlob(
         image.url,
         droppedFurniture
@@ -168,10 +176,18 @@ export default function EditorPage({ params }: EditorPageProps) {
       const originalResponse = await fetch(image.url);
       const originalBlob = await originalResponse.blob();
 
+      // Collect furniture names for the API
+      const furnitureNames = droppedFurniture.map(item => {
+        const furniture = getFurnitureById(item.furnitureId);
+        return furniture?.name || 'Unknown';
+      });
+
       // Create FormData
       const formData = new FormData();
+      formData.append('furnitureContactSheet', contactSheetBlob, 'contact-sheet.jpg');
       formData.append('originalImage', originalBlob, image.filename);
       formData.append('collageImage', collageBlob, 'collage.jpg');
+      formData.append('furnitureNames', JSON.stringify(furnitureNames));
 
       // Call collage staging API
       const response = await fetch('/api/stage-collage', {
@@ -184,26 +200,37 @@ export default function EditorPage({ params }: EditorPageProps) {
       if (result.success && result.stagedImageUrl) {
         setStagedImage(result.stagedImageUrl);
 
+        // Store the contact sheet preview URL if available
+        if (result.contactSheetPreviewUrl) {
+          setContactSheetPreview(result.contactSheetPreviewUrl);
+          console.log('Contact sheet preview available at:', result.contactSheetPreviewUrl);
+        }
+
         // Store the collage preview URL if available
         if (result.collagePreviewUrl) {
           setCollagePreview(result.collagePreviewUrl);
           console.log('Collage preview available at:', result.collagePreviewUrl);
         }
 
-        toast.success("Collage Staging Complete!", {
-          description: "Your room has been staged based on the furniture placement",
+        // Log furniture locations identified by Gemini
+        if (result.furnitureLocations) {
+          console.log('Furniture locations identified:', result.furnitureLocations);
+        }
+
+        toast.success("Two-Step Staging Complete!", {
+          description: "Your room has been staged using furniture location identification",
           id: loadingToastId
         });
       } else {
-        console.error('Collage staging failed:', result.error);
-        toast.error("Collage Staging Failed", {
+        console.error('Two-step staging failed:', result.error);
+        toast.error("Two-Step Staging Failed", {
           description: result.error || 'Unknown error occurred',
           id: loadingToastId
         });
       }
     } catch (error) {
-      console.error('Collage staging error:', error);
-      toast.error("Collage Staging Failed", {
+      console.error('Two-step staging error:', error);
+      toast.error("Two-Step Staging Failed", {
         description: "Please try again",
         id: loadingToastId
       });
@@ -360,6 +387,14 @@ export default function EditorPage({ params }: EditorPageProps) {
                   </Button>
                 </>
               )}
+              {contactSheetPreview && (
+                <Button
+                  variant="outline"
+                  onClick={() => window.open(contactSheetPreview, '_blank')}
+                >
+                  View Contact Sheet
+                </Button>
+              )}
               {collagePreview && (
                 <Button
                   variant="outline"
@@ -370,7 +405,7 @@ export default function EditorPage({ params }: EditorPageProps) {
               )}
               {droppedFurniture.length > 0 && (
                 <Button onClick={applyCollageStaging} disabled={staging}>
-                  {staging ? 'Staging...' : 'Stage with Collage'}
+                  {staging ? 'Staging...' : 'Stage with AI Analysis'}
                 </Button>
               )}
               <Button onClick={applyStaging} disabled={staging}>

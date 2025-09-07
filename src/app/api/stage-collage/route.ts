@@ -13,30 +13,51 @@ export async function POST(request: NextRequest) {
 
         const formData = await request.formData();
 
+        const furnitureContactSheetFile = formData.get('furnitureContactSheet') as File;
         const originalImageFile = formData.get('originalImage') as File;
         const collageImageFile = formData.get('collageImage') as File;
+        const furnitureNamesParam = formData.get('furnitureNames') as string;
 
-        if (!originalImageFile || !collageImageFile) {
+        if (!furnitureContactSheetFile || !originalImageFile || !collageImageFile || !furnitureNamesParam) {
             return NextResponse.json(
-                { success: false, error: 'Both original and collage images are required' },
+                { success: false, error: 'Furniture contact sheet, original image, collage image, and furniture names are required' },
                 { status: 400 }
             );
         }
 
+        // Parse furniture names
+        const furnitureNames = JSON.parse(furnitureNamesParam);
+
         // Convert files to buffers
+        const furnitureContactSheetBuffer = Buffer.from(await furnitureContactSheetFile.arrayBuffer());
         const originalImageBuffer = Buffer.from(await originalImageFile.arrayBuffer());
         const collageImageBuffer = Buffer.from(await collageImageFile.arrayBuffer());
 
-        // Stage the room using collage
-        const result = await virtualStagingService.stageRoomWithCollage(
-            originalImageBuffer,
+        // Step 1: Identify furniture locations from the collage
+        const locationResult = await virtualStagingService.identifyFurnitureLocations(
             collageImageBuffer,
-            originalImageFile.type
+            furnitureNames,
+            collageImageFile.type
         );
 
-        if (!result.success || !result.imageBuffer) {
+        if (!locationResult.success || !locationResult.locations) {
             return NextResponse.json(
-                { success: false, error: result.error || 'Staging failed' },
+                { success: false, error: locationResult.error || 'Failed to identify furniture locations' },
+                { status: 500 }
+            );
+        }
+
+        // Step 2: Stage the room using the contact sheet, original image, and identified locations
+        const stagingResult = await virtualStagingService.stageRoomWithLocations(
+            furnitureContactSheetBuffer,
+            originalImageBuffer,
+            locationResult.locations,
+            furnitureContactSheetFile.type
+        );
+
+        if (!stagingResult.success || !stagingResult.imageBuffer) {
+            return NextResponse.json(
+                { success: false, error: stagingResult.error || 'Staging failed' },
                 { status: 500 }
             );
         }
@@ -44,23 +65,32 @@ export async function POST(request: NextRequest) {
         // Upload staged image to S3
         const filename = `staged_collage_${randomBytes(8).toString('hex')}.jpg`;
         const s3Key = generateS3Key(userInfo.user.id, filename, 'staged');
-        await uploadToS3(result.imageBuffer, s3Key, 'image/jpeg');
+        await uploadToS3(stagingResult.imageBuffer, s3Key, 'image/jpeg');
 
-        // Also save the collage image for debugging/preview
-        const collageFilename = `collage_preview_${randomBytes(8).toString('hex')}.jpg`;
+        // Save the contact sheet for debugging/preview
+        const contactSheetFilename = `contact_sheet_${randomBytes(8).toString('hex')}.jpg`;
+        const contactSheetS3Key = generateS3Key(userInfo.user.id, contactSheetFilename, 'staged');
+        await uploadToS3(furnitureContactSheetBuffer, contactSheetS3Key, 'image/jpeg');
+
+        // Save the collage for debugging/preview
+        const collageFilename = `collage_${randomBytes(8).toString('hex')}.jpg`;
         const collageS3Key = generateS3Key(userInfo.user.id, collageFilename, 'staged');
         await uploadToS3(collageImageBuffer, collageS3Key, 'image/jpeg');
 
-        // Generate signed URLs for both images
+        // Generate signed URLs for all images
         const stagedImageUrl = await getSignedDownloadUrl(s3Key);
+        const contactSheetPreviewUrl = await getSignedDownloadUrl(contactSheetS3Key);
         const collagePreviewUrl = await getSignedDownloadUrl(collageS3Key);
 
         return NextResponse.json({
             success: true,
             stagedImageUrl,
-            collagePreviewUrl, // Include the collage preview URL
-            prompt: result.prompt,
+            contactSheetPreviewUrl,
+            collagePreviewUrl,
+            furnitureLocations: locationResult.locations,
+            prompt: stagingResult.prompt,
             s3Key,
+            contactSheetS3Key,
             collageS3Key,
         });
 
