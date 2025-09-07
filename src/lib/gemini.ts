@@ -17,6 +17,13 @@ export interface StagingResult {
   prompt?: string;
 }
 
+export interface CollageResult {
+  success: boolean;
+  imageBuffer?: Buffer;
+  error?: string;
+  prompt?: string;
+}
+
 export class VirtualStagingService {
   private model = ai.models.generateContent;
 
@@ -82,6 +89,81 @@ export class VirtualStagingService {
 
     } catch (error) {
       console.error('Gemini staging error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  }
+
+  async stageRoomWithCollage(
+    originalImageBuffer: Buffer,
+    collageImageBuffer: Buffer,
+    mimeType: string
+  ): Promise<CollageResult> {
+    try {
+      const base64Original = originalImageBuffer.toString('base64');
+      const base64Collage = collageImageBuffer.toString('base64');
+
+      const prompt = "Place the additional decorations as shown in the second image onto the original, first image, generating a staged room.";
+
+      const response = await this.model({
+        model: "gemini-2.5-flash-image-preview",
+        contents: [
+          {
+            inlineData: {
+              mimeType,
+              data: base64Original,
+            },
+          },
+          {
+            inlineData: {
+              mimeType,
+              data: base64Collage,
+            },
+          },
+          { text: prompt },
+        ],
+      });
+
+      // Extract the generated image from response
+      if (!response.candidates || response.candidates.length === 0) {
+        return {
+          success: false,
+          error: 'No candidates in response',
+          prompt,
+        };
+      }
+
+      const candidate = response.candidates[0];
+      if (!candidate.content || !candidate.content.parts) {
+        return {
+          success: false,
+          error: 'No content in response',
+          prompt,
+        };
+      }
+
+      for (const part of candidate.content.parts) {
+        if (part.inlineData?.data) {
+          const imageData = part.inlineData.data;
+          const buffer = Buffer.from(imageData, 'base64');
+          return {
+            success: true,
+            imageBuffer: buffer,
+            prompt,
+          };
+        }
+      }
+
+      return {
+        success: false,
+        error: 'No image generated in response',
+        prompt,
+      };
+
+    } catch (error) {
+      console.error('Gemini collage staging error:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred',
